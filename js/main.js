@@ -44,6 +44,10 @@ if (!Array.prototype.indexOf) {
 }
 
 require.config({
+  // RequireJS injects its module script tags after page load, so they escape
+  // the browser's hard-reload cache bypass and can serve stale JS for as long
+  // as the Pages max-age. Bust them so a fresh deploy is always what loads.
+  urlArgs: 'v=' + Date.now(),
   paths: {
     'd3': 'vendor/d3'
   },
