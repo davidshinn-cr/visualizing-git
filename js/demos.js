@@ -356,7 +356,27 @@ define([], function () {
     ]
   }
 
+  // `main` deliberately has a commit after the fork point. Beyond being a more
+  // realistic starting picture, the divergence keeps the eventual merge commit
+  // on the baseline -- cy() assigns lanes by sibling index, so without it the
+  // merge commit lands on the feature lane and drags the `main` tag with it.
+  var pullRequest = {
+    title: 'Pull Request',
+    key: 'pull-request',
+    message: "You're on `feature`. Push it to GitHub, then open a pull request.",
+    currentBranch: 'feature',
+    commitData: [
+      {id: 'e137e9b', parent: 'initial', tags: [], message: 'first commit'},
+      {id: '84c98fe', parent: 'e137e9b', tags: ['main', 'GitHub/main'], message: 'update docs'},
+      {id: '1c016b6', parent: 'e137e9b', tags: ['feature', 'HEAD'], message: 'login form'}
+    ],
+    originData: [
+      {id: 'e137e9b', parent: 'initial', tags: [], message: 'first commit'},
+      {id: '84c98fe', parent: 'e137e9b', tags: ['main', 'HEAD'], message: 'update docs'}
+    ]
+  }
+
   return [
-    free, freeWithRemote, upstreamChanges, rewrittenHistory, revert, cherryPick
+    pullRequest, free, freeWithRemote, upstreamChanges, rewrittenHistory, revert, cherryPick
   ]
 })

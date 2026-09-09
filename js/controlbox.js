@@ -251,6 +251,12 @@ function(_yargs, d3, demos) {
         this.info('`git rev_parse`')
         this.info('`git revert`')
         this.info('`git tag`')
+        this.info()
+        this.info('GitHub Commands (these are NOT git):')
+        this.info('`gh pr create`')
+        this.info('`gh pr list`')
+        this.info('`gh pr review`')
+        this.info('`gh pr merge`')
         return
       }
 
@@ -314,11 +320,18 @@ function(_yargs, d3, demos) {
 
       this._scrollToBottom();
 
-      if (split[0] !== 'git') {
+      // `gh` is a second program, not a git subcommand -- pull requests are a
+      // GitHub feature. `gh foo` dispatches to a gh_foo method.
+      var program = split[0];
+      if (program !== 'git' && program !== 'gh') {
         return this.error();
       }
 
-      var method = split[1].replace(/-/g, '_'),
+      if (!split[1]) {
+        return this.error('Usage: ' + program + ' &lt;command&gt;');
+      }
+
+      var method = (program === 'gh' ? 'gh_' : '') + split[1].replace(/-/g, '_'),
         args = split.slice(2),
         argsStr = args.join(' ')
 
@@ -858,6 +871,17 @@ function(_yargs, d3, demos) {
         local.moveTag('GitHub/' + localRef, localRef)
         remote.renderCommits();
         local.renderTags()
+
+        // A push to a branch with an open pull request updates that PR.
+        var control = this;
+        (this._syncPrs(remote) || []).forEach(function(pr) {
+          control.info('Pull request #' + pr.number + ' updated -- now ' +
+            control._prCount(control._prCommits(remote, pr).length) + '.');
+          if (pr.state === 'approved') {
+            control.info('The approval still stands. Many repositories turn on ' +
+              '"dismiss stale reviews" so a new push requires re-approval.');
+          }
+        });
       }
     },
 
@@ -916,6 +940,265 @@ function(_yargs, d3, demos) {
         this.info("Real git reflog supports the '" + subcommand +
                   "' subcommand but this tool only supports 'show' and 'exists'")
       }
+    },
+
+    // ---- Pull requests -----------------------------------------------------
+    // A pull request is a GitHub concept, not a git object, so its state lives
+    // on the origin view (see HistoryView.pullRequests) and travels through
+    // serialize/deserialize with the rest of that repository's state.
+
+    _requireOrigin: function() {
+      if (!this.originView) {
+        throw new Error('There is no GitHub remote in this scenario.');
+      }
+      return this.originView;
+    },
+
+    _prTag: function(pr) {
+      return '[PR#' + pr.number + ']';
+    },
+
+    _findPr: function(numStr) {
+      var origin = this._requireOrigin();
+      if (!numStr) {
+        throw new Error('Which pull request? Try: <code>gh pr list</code>');
+      }
+      var number = parseInt(numStr, 10);
+      var found = origin.pullRequests.filter(function(pr) {
+        return pr.number === number;
+      })[0];
+      if (!found) {
+        throw new Error('There is no pull request #' + numStr + '.');
+      }
+      return found;
+    },
+
+    // Commits on head that base does not have yet -- the same set-difference
+    // idiom rebase uses to pick commits to replay.
+    _prCommits: function(origin, pr) {
+      if (!origin.getCommit(pr.head) || !origin.getCommit(pr.base)) {
+        return [];
+      }
+      // getAncestorSet returns STRICT ancestors, so add each tip back in.
+      var base = origin.getAncestorSet(pr.base),
+        head = origin.getAncestorSet(pr.head);
+      base[origin.getCommit(pr.base).id] = 0;
+      head[origin.getCommit(pr.head).id] = 0;
+      return Object.keys(head).filter(function(id) {
+        return id !== 'initial' && !(id in base);
+      });
+    },
+
+    _prCount: function(n) {
+      return n + (n === 1 ? ' commit' : ' commits');
+    },
+
+    _prSummary: function(pr) {
+      return '<strong>#' + pr.number + '</strong>&nbsp; ' + pr.head +
+        ' &rarr; ' + pr.base + '&nbsp; <em>' + pr.state + '</em>';
+    },
+
+    // Re-points every open PR's chip and proposed-merge arrow at the current
+    // head and base tips. Called after create, after any push, and after merge,
+    // so a push to either branch keeps the picture honest without special cases.
+    _syncPrs: function(origin) {
+      if (!origin || !origin.pullRequests) {
+        return;
+      }
+      var moved = [];
+
+      // prTarget is derived state. Rebuild it from scratch each time so a branch
+      // tip that moved can never leave a stale arrow pointing from the old tip.
+      origin.commitData.forEach(function(commit) {
+        delete commit.prTarget;
+      });
+
+      origin.pullRequests.forEach(function(pr) {
+        if (pr.state === 'merged') {
+          return;
+        }
+        var headCommit = origin.getCommit(pr.head),
+          baseCommit = origin.getCommit(pr.base);
+        if (!headCommit || !baseCommit) {
+          return;
+        }
+
+        var tag = this._prTag(pr);
+        var tagCommit = origin.getCommit(tag);
+        if (tagCommit && tagCommit.id !== headCommit.id) {
+          origin.moveTag(tag, headCommit.id);
+          moved.push(pr);
+        }
+        headCommit.prTarget = baseCommit.id;
+      }, this);
+
+      origin.renderCommits();
+      origin.renderTags();
+      return moved;
+    },
+
+    // `git pr ...` is a common slip. Correct it out loud, then do the thing.
+    pr: function(args, options, cmdStr) {
+      this.info('Heads up: <strong>pr</strong> is not a git subcommand. ' +
+        'Pull requests are a GitHub feature, so the command is ' +
+        '<code>gh pr ...</code>. Running it for you.');
+      return this.gh_pr(args, options, cmdStr);
+    },
+
+    gh_pr: function(args, options, cmdStr) {
+      var opts = yargs(cmdStr, {
+        boolean: ['approve', 'squash', 'rebase'],
+        string: ['base', 'head']
+      });
+      var subcommand = opts._[0];
+
+      switch (subcommand) {
+        case 'create': return this._prCreate(opts);
+        case 'list':   return this._prList(opts);
+        case 'review': return this._prReview(opts);
+        case 'merge':  return this._prMerge(opts);
+        default:
+          throw new Error('Supported: <code>gh pr create</code>, ' +
+            '<code>gh pr list</code>, <code>gh pr review</code>, ' +
+            '<code>gh pr merge</code>');
+      }
+    },
+
+    _prCreate: function(opts) {
+      var origin = this._requireOrigin(),
+        local = this.historyView;
+
+      var head = opts.head || local.currentBranch,
+        base = opts.base || 'main';
+
+      if (!head) {
+        throw new Error('You are not on a branch. Check out the branch you want to propose.');
+      }
+      if (head === base) {
+        throw new Error('A pull request needs two different branches.');
+      }
+      if (origin.branches.indexOf(base) === -1) {
+        throw new Error('GitHub has no branch named "' + base + '".');
+      }
+      // The whole point of the ordering lesson: GitHub cannot open a pull
+      // request for a branch it has never seen.
+      if (origin.branches.indexOf(head) === -1) {
+        throw new Error('GitHub has never seen the branch "' + head + '". ' +
+          'A pull request lives on GitHub, so push it there first: ' +
+          '<code>git push GitHub ' + head + '</code>');
+      }
+
+      var already = origin.pullRequests.filter(function(pr) {
+        return pr.head === head && pr.state !== 'merged';
+      })[0];
+      if (already) {
+        throw new Error('Pull request #' + already.number +
+          ' is already open for "' + head + '".');
+      }
+
+      var headCommit = origin.getCommit(head),
+        baseCommit = origin.getCommit(base);
+      if (origin.isAncestorOf(headCommit.id, baseCommit.id)) {
+        throw new Error('There is nothing to compare -- "' + base +
+          '" already contains "' + head + '".');
+      }
+
+      var pr = {
+        number: origin.pullRequests.length + 1,
+        head: head,
+        base: base,
+        state: 'open'
+      };
+      origin.pullRequests.push(pr);
+      origin.branch(this._prTag(pr), head);
+      this._syncPrs(origin);
+
+      this.info('Opened pull request ' + this._prSummary(pr) +
+        '&nbsp; (' + this._prCount(this._prCommits(origin, pr).length) + ')');
+      this.info('It lives on <strong>GitHub</strong>. ' +
+        'Nothing changed in your local repository.');
+    },
+
+    _prList: function() {
+      var origin = this._requireOrigin();
+      if (!origin.pullRequests.length) {
+        return this.info('No pull requests yet. Try: <code>gh pr create</code>');
+      }
+      var control = this;
+      origin.pullRequests.forEach(function(pr) {
+        control.info("<span class='log-entry'>&gt; " +
+          control._prSummary(pr) + '</span>');
+      });
+    },
+
+    _prReview: function(opts) {
+      var pr = this._findPr(opts._[1]);
+
+      if (pr.state === 'merged') {
+        throw new Error('Pull request #' + pr.number + ' is already merged.');
+      }
+      if (!opts.approve) {
+        return this.info('Add <code>--approve</code> to approve it: ' +
+          '<code>gh pr review ' + pr.number + ' --approve</code>');
+      }
+
+      pr.state = 'approved';
+      this.info('Approved pull request ' + this._prSummary(pr));
+      this.info('Reviewing does not change any commits -- ' +
+        'it just records a decision on GitHub.');
+    },
+
+    _prMerge: function(opts) {
+      var origin = this._requireOrigin(),
+        pr = this._findPr(opts._[1]);
+
+      if (pr.state === 'merged') {
+        throw new Error('Pull request #' + pr.number + ' is already merged.');
+      }
+      if (pr.state !== 'approved') {
+        throw new Error('Pull request #' + pr.number + ' has not been approved yet. ' +
+          'Try: <code>gh pr review ' + pr.number + ' --approve</code>');
+      }
+      if (opts.squash || opts.rebase) {
+        this.info('This demo always creates a merge commit -- ' +
+          'squash and rebase merges are out of scope.');
+      }
+
+      // Re-read the tip rather than trusting anything cached at open time, so
+      // commits pushed after the PR opened are included, as on GitHub.
+      var headCommit = origin.getCommit(pr.head),
+        baseCommit = origin.getCommit(pr.base);
+      if (!headCommit) {
+        throw new Error('GitHub no longer has a branch named "' + pr.head + '".');
+      }
+      if (origin.isAncestorOf(headCommit.id, baseCommit.id)) {
+        throw new Error('Nothing to merge -- "' + pr.base +
+          '" already contains "' + pr.head + '".');
+      }
+
+      // Build the merge commit directly instead of calling merge(), so it can
+      // never fast-forward: GitHub's default is always a merge commit.
+      origin.checkout(pr.base);
+      origin.commit({ parent2: headCommit.id }, 'Merge PR #' + pr.number);
+
+      var mergeCommit = origin.getCommit('HEAD');
+      pr.state = 'merged';
+      pr.mergeCommit = mergeCommit.id;
+
+      // The proposal became a commit: move the chip onto the merge commit and let
+      // the real merge pointer take over. _syncPrs drops the ghost arrow, since a
+      // merged PR is skipped when arrows are rebuilt.
+      origin.moveTag(this._prTag(pr), mergeCommit.id);
+      this._syncPrs(origin);
+
+      origin.addReflogEntry(pr.base, mergeCommit.id,
+        'merge ' + pr.head + ": Merge made by the 'recursive' strategy.");
+
+      this.info('Merged pull request #' + pr.number + ' into <strong>' +
+        pr.base + '</strong> on GitHub.');
+      this.info('Look at the two panels: GitHub has a new merge commit, ' +
+        'your local repository does not. Run <code>git checkout ' + pr.base +
+        '</code> then <code>git pull</code> to catch up.');
     }
   };
 
