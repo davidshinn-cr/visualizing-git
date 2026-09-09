@@ -21,6 +21,11 @@ define(['historyview', 'controlbox', 'd3'], function(HistoryView, ControlBox, d3
     historyView = new HistoryView(args);
     window.hv = historyView;
 
+    if (args.key === 'broken-option') {
+      // Lay the commits out with the new broken-option spacing rules.
+      historyView.applyBrokenOptionLayout(args.commitData, brokenOptionSpacing);
+    }
+
     if (args.originData) {
       originView = new HistoryView({
         name: name + '-Origin',

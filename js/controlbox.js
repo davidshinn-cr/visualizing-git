@@ -237,6 +237,7 @@ function(_yargs, d3, demos) {
         this.info()
         this.info('Available Git Commands:')
         this.info('`git branch`')
+        this.info('`git broken-option`')
         this.info('`git checkout`')
         this.info('`git cherry_pick`')
         this.info('`git commit`')
@@ -859,6 +860,15 @@ function(_yargs, d3, demos) {
         remote.renderCommits();
         local.renderTags()
       }
+    },
+
+    broken_option: function(args) {
+      var target = args[0];
+
+      this.renderBrokenOptionPanel(target);
+      resetBrokenOption(this.historyView, target);
+
+      this.info('Broken option applied to ' + target);
     },
 
     config: function(args) {

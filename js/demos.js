@@ -356,7 +356,17 @@ define([], function () {
     ]
   }
 
+  var brokenOption = {
+    title: 'Broken Option',
+    key: 'broken-option',
+    message: 'Try out the new broken option layout!',
+    commitData: [
+        {id: 'e137e9b', tags: ['main'], message: 'first commit'},
+        {id: 'a1b2c3d', tags: ['HEAD'], parent: 'does-not-exist', message: 'second commit'}
+    ]
+  }
+
   return [
-    free, freeWithRemote, upstreamChanges, rewrittenHistory, revert, cherryPick
+    free, freeWithRemote, upstreamChanges, rewrittenHistory, revert, cherryPick, brokenOption
   ]
 })
