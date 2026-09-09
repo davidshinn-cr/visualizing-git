@@ -4,6 +4,7 @@ define(['d3'], function() {
   var REG_MARKER_END = 'url(#triangle)',
     MERGE_MARKER_END = 'url(#brown-triangle)',
     FADED_MARKER_END = 'url(#faded-triangle)',
+    PR_MARKER_END = 'url(#purple-triangle)',
 
     preventOverlap,
     applyBranchlessClass,
@@ -270,6 +271,10 @@ define(['d3'], function() {
 
     this.logs = {}
 
+    // Pull requests live on the GitHub side, not in git. Serialized alongside
+    // commitData so undo/redo and page reload restore them.
+    this.pullRequests = config.pullRequests || [];
+
     this.initialCommit = {
       id: 'initial',
       parent: null,
@@ -298,6 +303,7 @@ define(['d3'], function() {
         branches: this.branches,
         logs: this.logs,
         currentBranch: this.currentBranch,
+        pullRequests: this.pullRequests,
       }
 
       return JSON.stringify(data)
@@ -309,6 +315,7 @@ define(['d3'], function() {
         this.commitData = data.commitData
         this.branches = data.branches
         this.logs = data.logs
+        this.pullRequests = data.pullRequests || []
         this._setCurrentBranch(data.currentBranch || null)
         this.renderCommits()
         this.renderTags()
@@ -614,6 +621,7 @@ define(['d3'], function() {
       this._renderCircles();
       this._renderPointers();
       this._renderMergePointers();
+      this._renderPrPointers();
       this._renderIdLabels();
       this._resizeSvg();
       this.currentBranch && this.checkout(this.currentBranch);
@@ -774,6 +782,66 @@ define(['d3'], function() {
         .remove()
     },
 
+    // Draws the "proposed merge" arrow for an open pull request: head tip -> base tip.
+    // Mirrors _renderMergePointers, but follows the prTarget field instead of parent2,
+    // which works because px1/py1/px2/py2 take the field name as a parameter.
+    _renderPrPointers: function() {
+      var view = this,
+        prCommits = [],
+        existingPointers, newPointers;
+
+      for (var i = 0; i < this.commitData.length; i++) {
+        var commit = this.commitData[i];
+        if (typeof commit.prTarget === 'string' && commit.prTarget !== commit.id) {
+          prCommits.push(commit);
+        }
+      }
+
+      existingPointers = this.arrowBox.selectAll('polyline.pr-pointer')
+        .data(prCommits, function(d) {
+          return d.id;
+        })
+        .attr('id', function(d) {
+          return view.name + '-' + d.id + '-pr-to-' + d.prTarget;
+        });
+
+      existingPointers.transition().duration(500)
+        .attr('points', function(d) {
+          var p1 = px1(d, view, 'prTarget') + ',' + py1(d, view, 'prTarget'),
+            p2 = px2(d, view, 'prTarget') + ',' + py2(d, view, 'prTarget');
+
+          return [p1, p2].join(' ');
+        });
+
+      newPointers = existingPointers.enter()
+        .append('svg:polyline')
+        .attr('id', function(d) {
+          return view.name + '-' + d.id + '-pr-to-' + d.prTarget;
+        })
+        .classed('pr-pointer', true)
+        .attr('points', function(d) {
+          var x1 = px1(d, view, 'prTarget'),
+            y1 = py1(d, view, 'prTarget'),
+            p1 = x1 + ',' + y1;
+
+          return [p1, p1].join(' ');
+        })
+        .attr('marker-end', PR_MARKER_END)
+        .transition()
+        .duration(500)
+        .attr('points', function(d) {
+          var points = d3.select(this).attr('points').split(' '),
+            x2 = px2(d, view, 'prTarget'),
+            y2 = py2(d, view, 'prTarget');
+
+          points[1] = x2 + ',' + y2;
+          return points.join(' ');
+        });
+
+      existingPointers.exit()
+        .remove()
+    },
+
     _renderIdLabels: function() {
       this._renderText('id-label', function(d) {
         return d.id + '..';
@@ -915,7 +983,7 @@ define(['d3'], function() {
         .attr('class', function(d) {
           var classes = 'branch-tag';
           if (d.name.indexOf('[') === 0 && d.name.indexOf(']') === d.name.length - 1) {
-            classes += ' git-tag';
+            classes += /^\[PR#\d+\]$/.test(d.name) ? ' pull-request' : ' git-tag';
           } else if (d.name.indexOf('/') >= 0) {
             classes += ' remote-branch';
           } else if (d.name.toUpperCase() === 'HEAD') {

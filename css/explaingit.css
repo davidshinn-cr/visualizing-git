@@ -265,6 +265,15 @@ circle.commit.logging {
   stroke-dasharray: 15, 4;
 }
 
+/* A pull request's proposed merge: head tip -> base tip. Tighter dashes than
+   .merge-pointer so a proposal reads differently from a merge that happened. */
+.pr-pointer {
+  stroke: #8250DF;
+  stroke-width: 4;
+  stroke-dasharray: 4, 6;
+  opacity: 0.85;
+}
+
 .commit-pointer.branchless, .merge-pointer.branchless {
   stroke: #DDD;
   stroke-width: 2;
@@ -306,6 +315,18 @@ g.branch-tag > text {
   fill: #000;
   font-size: 15px;
   font-family: Arial;
+}
+
+/* Pull request chip. GitHub's PR purple, distinct from the gold branch,
+   grey remote-tracking, green HEAD and blue annotated-tag chips. */
+g.branch-tag.pull-request > rect {
+  fill: #8250DF;
+  stroke: #4C2889;
+}
+
+g.branch-tag.pull-request > text {
+  fill: #FFF;
+  font-weight: bold;
 }
 
 g.head-tag > rect {

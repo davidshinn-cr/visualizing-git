@@ -47,6 +47,19 @@ git revert
 git tag
 ```
 
+Available GitHub Commands (these are **not** git -- a pull request is a GitHub
+feature, so this fork models it with the `gh` CLI's real verbs):
+```
+gh pr create
+gh pr list
+gh pr review
+gh pr merge
+```
+
+Try the **Pull Request** scenario: push `feature` to GitHub, open a pull request,
+push a follow-up commit, approve it, and merge. Watch how the merge lands on the
+GitHub panel only -- your local repository stays behind until you `git pull`.
+
 
 We hope you find this tool useful! Issues and pull requests are welcome! Enjoy! :sparkles:
 
