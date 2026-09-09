@@ -20,6 +20,7 @@ function(_yargs, d3, demos) {
   function ControlBox(config) {
     this.historyView = config.historyView;
     this.originView = config.originView;
+    this.GitHubView = config.originView;
     this.initialMessage = config.initialMessage || 'Enter git commands below.';
     this._commandHistory = [];
     this._currentCommand = -1;
@@ -449,13 +450,13 @@ function(_yargs, d3, demos) {
         var branches
         if (options.remote) {
           branches = this.getRepoView().getBranchList().filter(function (b) {
-            return b.indexOf('&nbsp; origin/') === 0
+            return b.indexOf('&nbsp; GitHub/') === 0
           }).join('<br>')
         } else if (options.all) {
           branches = this.getRepoView().getBranchList().join('<br>')
         } else {
           branches = this.getRepoView().getBranchList().filter(function(b) {
-            return b.indexOf('&nbsp; origin/') !== 0
+            return b.indexOf('&nbsp; GitHub/') !== 0
           }).join('<br>')
         }
         return this.info(branches)
@@ -660,7 +661,7 @@ function(_yargs, d3, demos) {
 
       var origin = this.originView,
         local = this.historyView,
-        remotePattern = /^origin\/([^\/]+)$/,
+        remotePattern = /^GitHub\/([^\/]+)$/,
         rtb, isRTB, fb,
         fetchBranches = {},
         fetchIds = [], // just to make sure we don't fetch the same commit twice
@@ -711,7 +712,7 @@ function(_yargs, d3, demos) {
       for (fb in fetchBranches) {
         if (origin.branches.indexOf(fb) > -1) {
           var remoteLoc = origin.getCommit(fb).id;
-          local.moveTag('origin/' + fb, remoteLoc);
+          local.moveTag('GitHub/' + fb, remoteLoc);
         }
 
         resultMessage += 'Fetched ' + fetchBranches[fb] + ' commits on ' + fb + '.</br>';
@@ -729,7 +730,7 @@ function(_yargs, d3, demos) {
       var control = this,
         local = this.historyView,
         currentBranch = local.currentBranch,
-        rtBranch = 'origin/' + currentBranch,
+        rtBranch = 'GitHub/' + currentBranch,
         isFastForward = false;
 
       this.fetch();
@@ -773,7 +774,7 @@ function(_yargs, d3, demos) {
       }
       var control = this,
         local = this.historyView,
-        remoteName = opt._[0] || 'origin',
+        remoteName = opt._[0] || 'GitHub',
         remote = this[remoteName + 'View'],
         branchArgs = opt._[1],
         localRef = local.currentBranch,
@@ -844,7 +845,7 @@ function(_yargs, d3, demos) {
         } else {
           var localData = JSON.parse(JSON.stringify(local.commitData))
           localData.forEach(function(commit) {
-            var originTagIndex = commit.tags.indexOf('origin/' + localRef)
+            var originTagIndex = commit.tags.indexOf('GitHub/' + localRef)
             if (originTagIndex > -1) {
               commit.tags.splice(originTagIndex, 1)
             }
@@ -854,7 +855,7 @@ function(_yargs, d3, demos) {
         }
 
         remote.moveTag(remoteRef, localCommit.id);
-        local.moveTag('origin/' + localRef, localRef)
+        local.moveTag('GitHub/' + localRef, localRef)
         remote.renderCommits();
         local.renderTags()
       }

@@ -27,7 +27,7 @@ define(['historyview', 'controlbox', 'd3'], function(HistoryView, ControlBox, d3
         width: 300,
         height: 400,
         commitRadius: args.commitRadius,
-        remoteName: 'origin',
+        remoteName: 'GitHub',
         commitData: args.originData,
         savedState: args.ovSavedState
       });
